@@ -102,3 +102,9 @@ A persistent status bar at the bottom shows:
 - Only reads `.md` files from the **top level** of the selected folder (no recursive subfolder scanning)
 - Requires a one-time browser permission grant per folder per session
 - Firefox is unsupported (File System Access API not available)
+
+## Screenshot
+
+![screenshot of the page in action](Screenshot 2026-08-01 234657.jpg)
+
+
