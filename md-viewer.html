@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MD Viewer</title>
+<script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-dark:     #1a1a2e;
+  --bg-panel:    #16213e;
+  --bg-item:     #0f3460;
+  --accent:      #e94560;
+  --accent-2:    #a78bfa;
+  --text-main:   #e2e8f0;
+  --text-muted:  #94a3b8;
+  --text-dim:    #475569;
+  --border:      #1e293b;
+  --white:       #ffffff;
+  --code-bg:     #0d1117;
+  --sidebar-w:   270px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+  background: var(--bg-dark);
+  color: var(--text-main);
+}
+
+/* ── Sidebar ─────────────────────────────── */
+#sidebar {
+  width: var(--sidebar-w);
+  min-width: 160px;
+  max-width: 520px;
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  flex-shrink: 0;
+}
+
+/* ── Resize handle ───────────────────────── */
+#resizer {
+  width: 5px;
+  min-width: 5px;
+  background: var(--border);
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s;
+  z-index: 10;
+}
+#resizer:hover, #resizer.dragging { background: var(--accent-2); }
+#resizer::after {
+  content: '';
+  position: absolute;
+  inset: 0 -4px;
+}
+
+#sidebar-header {
+  padding: 18px 14px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#sidebar-header .logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+#sidebar-header .logo svg { flex-shrink: 0; }
+#sidebar-header .logo span {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+#open-btn {
+  width: 100%;
+  padding: 9px 14px;
+  background: linear-gradient(135deg, var(--accent), #c0392b);
+  color: white;
+  border: none;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+#open-btn:hover { opacity: 0.85; }
+#open-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+#search-wrap {
+  position: relative;
+  margin-top: 10px;
+  display: none;
+}
+#search-wrap svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-dim);
+  pointer-events: none;
+}
+#search {
+  width: 100%;
+  padding: 7px 10px 7px 32px;
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-main);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+#search::placeholder { color: var(--text-dim); }
+#search:focus { border-color: var(--accent-2); }
+
+#file-count {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 8px;
+  padding: 0 2px;
+}
+
+#file-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+#file-list::-webkit-scrollbar { width: 4px; }
+#file-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-muted);
+  border-left: 3px solid transparent;
+  transition: all 0.12s;
+  user-select: none;
+}
+.file-item:hover { background: rgba(255,255,255,0.04); color: var(--text-main); }
+.file-item.active {
+  background: rgba(167,139,250,0.1);
+  color: var(--accent-2);
+  border-left-color: var(--accent-2);
+}
+.file-item svg { flex-shrink: 0; opacity: 0.6; }
+.file-item .fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.empty-msg {
+  padding: 24px 16px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+  line-height: 1.7;
+}
+
+/* ── Main ────────────────────────────────── */
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f8fafc;
+  color: #1e293b;
+}
+
+#toolbar {
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 10px 20px;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  min-height: 52px;
+}
+
+#file-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-group {
+  display: flex;
+  background: #f1f5f9;
+  border-radius: 7px;
+  padding: 3px;
+  gap: 2px;
+}
+.btn-group button {
+  padding: 5px 14px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #64748b;
+  border-radius: 5px;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.btn-group button:hover { color: #334155; }
+.btn-group button.active {
+  background: white;
+  color: #1e293b;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+
+#save-btn {
+  padding: 6px 16px;
+  background: var(--accent-2);
+  color: white;
+  border: none;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+#save-btn:hover { filter: brightness(1.1); }
+#save-btn.show { display: flex; }
+#save-btn.ok { background: #22c55e; }
+
+#kbd-hint {
+  font-size: 11px;
+  color: #94a3b8;
+  display: none;
+}
+
+/* ── Content panels ──────────────────────── */
+#content-area {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.panel {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  display: none;
+}
+.panel.show { display: block; }
+.panel::-webkit-scrollbar { width: 6px; }
+.panel::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+/* Rendered */
+#p-view {
+  padding: 40px 56px;
+  background: white;
+}
+
+.md { max-width: 780px; margin: 0 auto; line-height: 1.75; color: #1e293b; }
+.md h1 { font-size: 2em; font-weight: 800; margin: 0 0 0.3em; padding-bottom: 0.3em; border-bottom: 2px solid #e2e8f0; color: #0f172a; }
+.md h2 { font-size: 1.45em; font-weight: 700; margin: 1.8em 0 0.5em; padding-bottom: 0.2em; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
+.md h3 { font-size: 1.15em; font-weight: 700; margin: 1.4em 0 0.4em; color: #334155; }
+.md h4, .md h5, .md h6 { font-size: 1em; font-weight: 700; margin: 1.2em 0 0.3em; color: #475569; }
+.md p { margin: 0.8em 0; }
+.md a { color: #7c3aed; text-decoration: none; }
+.md a:hover { text-decoration: underline; }
+.md ul, .md ol { margin: 0.8em 0; padding-left: 1.8em; }
+.md li { margin: 0.35em 0; }
+.md li p { margin: 0; }
+.md blockquote {
+  border-left: 4px solid var(--accent-2);
+  margin: 1.2em 0;
+  padding: 10px 18px;
+  background: #f5f3ff;
+  border-radius: 0 8px 8px 0;
+  color: #4c1d95;
+}
+.md blockquote p { margin: 0; }
+.md code {
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.875em;
+  color: #be185d;
+}
+.md pre {
+  background: var(--code-bg);
+  border-radius: 10px;
+  padding: 18px 22px;
+  overflow-x: auto;
+  margin: 1.2em 0;
+  position: relative;
+}
+.md pre code {
+  background: none;
+  color: #abb2bf;
+  padding: 0;
+  font-size: 0.875em;
+  line-height: 1.65;
+}
+.md hr { border: none; border-top: 2px solid #e2e8f0; margin: 2em 0; }
+.md table { width: 100%; border-collapse: collapse; margin: 1.2em 0; font-size: 0.9em; }
+.md th { background: #f8fafc; font-weight: 600; text-align: left; padding: 10px 14px; border: 1px solid #e2e8f0; color: #334155; }
+.md td { padding: 9px 14px; border: 1px solid #e2e8f0; }
+.md tr:hover td { background: #fafafa; }
+.md img { max-width: 100%; border-radius: 8px; margin: 0.5em 0; }
+.md del { color: #94a3b8; }
+.md input[type="checkbox"] { margin-right: 6px; }
+
+/* Source view */
+#p-source {
+  background: var(--code-bg);
+  padding: 0;
+}
+#p-source::-webkit-scrollbar-thumb { background: #2d3748; }
+
+#source-content {
+  padding: 32px 40px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 13.5px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #abb2bf;
+  min-height: 100%;
+}
+#source-content .hljs { background: transparent; padding: 0; }
+
+/* Edit view */
+#p-edit {
+  background: var(--code-bg);
+  display: none;
+  flex-direction: column;
+}
+#p-edit.show { display: flex; }
+#edit-ta {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  padding: 32px 40px;
+  background: transparent;
+  color: #abb2bf;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 13.5px;
+  line-height: 1.75;
+  border: none;
+  outline: none;
+  resize: none;
+  tab-size: 2;
+}
+
+/* Welcome screen */
+#welcome {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  gap: 16px;
+}
+#welcome .big { font-size: 72px; opacity: 0.12; }
+#welcome h2 { font-size: 18px; font-weight: 700; color: #334155; }
+#welcome p { font-size: 14px; color: #94a3b8; max-width: 280px; text-align: center; line-height: 1.6; }
+
+/* Status bar */
+#statusbar {
+  background: var(--bg-dark);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  padding: 4px 20px;
+  display: flex;
+  gap: 18px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+}
+#statusbar span { display: flex; align-items: center; gap: 5px; }
+#sb-mode { color: var(--accent-2); font-weight: 600; }
+
+/* No API banner */
+#no-api {
+  display: none;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #c2410c;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-top: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  :root { --sidebar-w: 200px; }
+  #p-view { padding: 24px 20px; }
+  #edit-ta, #source-content { padding: 20px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Sidebar ── -->
+<div id="sidebar">
+  <div id="sidebar-header">
+    <div class="logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="url(#g1)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <defs><linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#e94560"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs>
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+      </svg>
+      <span>MD Viewer</span>
+    </div>
+    <button id="open-btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      Open Folder
+    </button>
+    <div id="no-api">⚠️ Requires Chrome or Edge. Firefox doesn't support the File System Access API.</div>
+    <div id="search-wrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="search" placeholder="Filter files…" autocomplete="off">
+    </div>
+    <div id="file-count"></div>
+  </div>
+  <div id="file-list">
+    <div class="empty-msg">Open a folder to browse your<br>Markdown files.</div>
+  </div>
+</div>
+
+<div id="resizer"></div>
+
+<!-- ── Main ── -->
+<div id="main">
+  <div id="toolbar">
+    <span id="file-title"></span>
+    <div class="btn-group">
+      <button id="btn-view"   onclick="setMode('view')"  >Rendered</button>
+      <button id="btn-source" onclick="setMode('source')">Source</button>
+      <button id="btn-edit"   onclick="setMode('edit')"  >Edit</button>
+    </div>
+    <button id="save-btn" onclick="saveFile()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      Save
+    </button>
+    <span id="kbd-hint">Ctrl+S save · Ctrl+E toggle edit</span>
+  </div>
+
+  <div id="content-area">
+    <!-- Welcome -->
+    <div id="welcome">
+      <div class="big">📝</div>
+      <h2>Select a file</h2>
+      <p>Open a folder from the sidebar and choose a Markdown file to view or edit.</p>
+    </div>
+
+    <!-- Rendered -->
+    <div class="panel" id="p-view">
+      <div class="md" id="md-out"></div>
+    </div>
+
+    <!-- Source -->
+    <div class="panel" id="p-source">
+      <div id="source-content"></div>
+    </div>
+
+    <!-- Edit -->
+    <div class="panel" id="p-edit">
+      <textarea id="edit-ta" spellcheck="false" autocorrect="off" autocapitalize="off"></textarea>
+    </div>
+  </div>
+
+  <div id="statusbar">
+    <span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> <span id="sb-file">No file</span></span>
+    <span id="sb-mode-wrap">Mode: <span id="sb-mode">—</span></span>
+    <span id="sb-chars">—</span>
+    <span id="sb-lines">—</span>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────
+let dirHandle   = null;
+let handles     = {};        // name → FileSystemFileHandle
+let currentName = null;
+let content     = '';
+let mode        = 'view';
+let dirty       = false;
+
+// ── Check API support ────────────────────────────────────────────────
+if (!window.showDirectoryPicker) {
+  document.getElementById('no-api').style.display = 'block';
+  document.getElementById('open-btn').disabled = true;
+}
+
+// ── marked config ────────────────────────────────────────────────────
+marked.use({ gfm: true, breaks: true });
+
+// ── Open folder ──────────────────────────────────────────────────────
+document.getElementById('open-btn').addEventListener('click', async () => {
+  try {
+    dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    await scanFolder();
+  } catch(e) {
+    if (e.name !== 'AbortError') alert('Could not open folder:\n' + e.message);
+  }
+});
+
+async function scanFolder() {
+  handles = {};
+  const names = [];
+  for await (const [n, h] of dirHandle.entries()) {
+    if (h.kind === 'file' && n.toLowerCase().endsWith('.md')) {
+      handles[n] = h;
+      names.push(n);
+    }
+  }
+  names.sort((a,b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  renderList(names);
+  const sw = document.getElementById('search-wrap');
+  sw.style.display = 'block';
+  document.getElementById('search').value = '';
+  document.getElementById('file-count').textContent =
+    names.length + ' file' + (names.length !== 1 ? 's' : '');
+}
+
+function renderList(names) {
+  const el = document.getElementById('file-list');
+  if (!names.length) {
+    el.innerHTML = '<div class="empty-msg">No .md files found<br>in this folder.</div>';
+    return;
+  }
+  el.innerHTML = names.map(n => `
+    <div class="file-item${n === currentName ? ' active' : ''}" data-name="${esc(n)}" onclick="pick(this.dataset.name)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <span class="fname" title="${esc(n)}">${esc(n)}</span>
+    </div>
+  `).join('');
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Search ───────────────────────────────────────────────────────────
+document.getElementById('search').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  const names = Object.keys(handles).filter(n => n.toLowerCase().includes(q))
+    .sort((a,b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  renderList(names);
+});
+
+// ── Pick file ────────────────────────────────────────────────────────
+async function pick(name) {
+  if (dirty && !confirm('Unsaved changes will be lost. Continue?')) return;
+
+  currentName = name;
+  dirty = false;
+  document.querySelectorAll('.file-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.name === name);
+  });
+
+  try {
+    const file = await handles[name].getFile();
+    content = await file.text();
+    showFile();
+  } catch(e) {
+    alert('Could not read file:\n' + e.message);
+  }
+}
+
+function showFile() {
+  document.getElementById('welcome').style.display = 'none';
+  document.getElementById('toolbar').style.display = 'flex';
+  document.getElementById('kbd-hint').style.display = 'inline';
+  document.getElementById('file-title').textContent = currentName;
+  document.getElementById('save-btn').classList.remove('show','ok');
+  document.getElementById('save-btn').textContent = 'Save';
+  // re-insert icon
+  document.getElementById('save-btn').innerHTML =
+    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save';
+  setMode(mode);
+}
+
+// ── Modes ────────────────────────────────────────────────────────────
+function setMode(m) {
+  mode = m;
+
+  // buttons
+  document.getElementById('btn-view').classList.toggle('active', m === 'view');
+  document.getElementById('btn-source').classList.toggle('active', m === 'source');
+  document.getElementById('btn-edit').classList.toggle('active', m === 'edit');
+
+  // panels — clear show
+  ['p-view','p-source','p-edit'].forEach(id => {
+    const el = document.getElementById(id);
+    el.classList.remove('show');
+  });
+
+  if (m === 'view') {
+    const html = marked.parse(content);
+    document.getElementById('md-out').innerHTML = html;
+    document.querySelectorAll('#md-out pre code').forEach(b => hljs.highlightElement(b));
+    document.getElementById('p-view').classList.add('show');
+    document.getElementById('save-btn').classList.remove('show');
+  } else if (m === 'source') {
+    const highlighted = hljs.highlight(content, { language: 'markdown' }).value;
+    document.getElementById('source-content').innerHTML = highlighted;
+    document.getElementById('p-source').classList.add('show');
+    document.getElementById('save-btn').classList.remove('show');
+  } else {
+    document.getElementById('edit-ta').value = content;
+    document.getElementById('p-edit').classList.add('show');
+    if (dirty) document.getElementById('save-btn').classList.add('show');
+    document.getElementById('edit-ta').focus();
+  }
+
+  document.getElementById('sb-mode').textContent =
+    m === 'view' ? 'Rendered' : m === 'source' ? 'Source' : 'Edit';
+  updateStatus();
+}
+
+// ── Status bar ───────────────────────────────────────────────────────
+function updateStatus() {
+  if (!currentName) return;
+  const src = mode === 'edit' ? document.getElementById('edit-ta').value : content;
+  const lines = src.split('\n').length;
+  const chars = src.length;
+  document.getElementById('sb-file').textContent = currentName;
+  document.getElementById('sb-lines').textContent = lines + ' lines';
+  document.getElementById('sb-chars').textContent = chars.toLocaleString() + ' chars';
+}
+
+// ── Edit tracking ────────────────────────────────────────────────────
+document.getElementById('edit-ta').addEventListener('input', function() {
+  dirty = true;
+  document.getElementById('save-btn').classList.add('show');
+  document.getElementById('save-btn').innerHTML =
+    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save';
+  document.getElementById('save-btn').classList.remove('ok');
+  updateStatus();
+});
+
+// ── Save ─────────────────────────────────────────────────────────────
+async function saveFile() {
+  if (!currentName) return;
+  const newContent = document.getElementById('edit-ta').value;
+  try {
+    const w = await handles[currentName].createWritable();
+    await w.write(newContent);
+    await w.close();
+    content = newContent;
+    dirty = false;
+    const btn = document.getElementById('save-btn');
+    btn.innerHTML =
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Saved!';
+    btn.classList.add('ok');
+    setTimeout(() => {
+      btn.innerHTML =
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save';
+      btn.classList.remove('ok');
+    }, 2200);
+    updateStatus();
+  } catch(e) {
+    alert('Save failed:\n' + e.message);
+  }
+}
+
+// ── Keyboard shortcuts ───────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    if (mode === 'edit') saveFile();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+    e.preventDefault();
+    if (currentName) setMode(mode === 'edit' ? 'view' : 'edit');
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+    e.preventDefault();
+    if (currentName) setMode('view');
+  }
+});
+
+// Warn on page unload if dirty
+window.addEventListener('beforeunload', e => {
+  if (dirty) { e.preventDefault(); e.returnValue = ''; }
+});
+
+// ── Sidebar resize ───────────────────────────────────────────────────
+const sidebar  = document.getElementById('sidebar');
+const resizer  = document.getElementById('resizer');
+const SIDEBAR_KEY = 'md-viewer-sidebar-w';
+
+// Restore saved width
+const savedW = localStorage.getItem(SIDEBAR_KEY);
+if (savedW) sidebar.style.width = savedW + 'px';
+
+let dragging = false, startX = 0, startW = 0;
+
+resizer.addEventListener('mousedown', e => {
+  dragging = true;
+  startX = e.clientX;
+  startW = sidebar.offsetWidth;
+  resizer.classList.add('dragging');
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  const delta = e.clientX - startX;
+  const newW  = Math.min(520, Math.max(160, startW + delta));
+  sidebar.style.width = newW + 'px';
+});
+
+document.addEventListener('mouseup', () => {
+  if (!dragging) return;
+  dragging = false;
+  resizer.classList.remove('dragging');
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+  localStorage.setItem(SIDEBAR_KEY, sidebar.offsetWidth);
+});
+</script>
+</body>
+</html>
