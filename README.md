@@ -105,6 +105,5 @@ A persistent status bar at the bottom shows:
 
 ## Screenshot
 
-![screenshot of the page in action](Screenshot 2026-08-01 234657.jpg)
-
+<img src="Screenshot 2026-08-01 234657.jpg" alt="screenshot of the page in action]" width="500">
 
