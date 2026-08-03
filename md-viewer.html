@@ -106,6 +106,15 @@ body {
 #open-btn:hover { opacity: 0.85; }
 #open-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+#open-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin-top: 8px;
+  padding: 0 2px;
+}
+#open-hint b { color: var(--text-muted); }
+
 #search-wrap {
   position: relative;
   margin-top: 10px;
@@ -234,6 +243,24 @@ body {
   box-shadow: 0 1px 3px rgba(0,0,0,0.12);
 }
 
+#dir-btn {
+  padding: 6px 12px;
+  background: #f1f5f9;
+  color: #475569;
+  border: none;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+#dir-btn:hover { background: #e2e8f0; color: #1e293b; }
+#dir-btn.rtl-active { background: rgba(167,139,250,0.15); color: var(--accent-2); }
+
 #save-btn {
   padding: 6px 16px;
   background: var(--accent-2);
@@ -333,6 +360,18 @@ body {
 .md img { max-width: 100%; border-radius: 8px; margin: 0.5em 0; }
 .md del { color: #94a3b8; }
 .md input[type="checkbox"] { margin-right: 6px; }
+
+/* ── RTL support (for Arabic / Hebrew content) ─────────── */
+.md[dir="rtl"] { text-align: right; }
+.md[dir="rtl"] ul, .md[dir="rtl"] ol { padding-left: 0; padding-right: 1.8em; }
+.md[dir="rtl"] blockquote { border-left: none; border-right: 4px solid var(--accent-2); border-radius: 8px 0 0 8px; }
+.md[dir="rtl"] th, .md[dir="rtl"] td { text-align: right; }
+.md[dir="rtl"] input[type="checkbox"] { margin-right: 0; margin-left: 6px; }
+/* code should always stay left-to-right, even inside RTL prose */
+.md[dir="rtl"] pre, .md[dir="rtl"] code { direction: ltr; text-align: left; }
+
+#source-content[dir="rtl"] { text-align: right; }
+#edit-ta[dir="rtl"] { text-align: right; }
 
 /* Source view */
 #p-source {
@@ -441,6 +480,7 @@ body {
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
       Open Folder
     </button>
+    <div id="open-hint">Tip: Chrome blocks picking <b>Downloads</b>, <b>Documents</b>, <b>Desktop</b> or your home folder directly. Open a subfolder inside one of them instead (e.g. create <b>Downloads/Notes</b>).</div>
     <div id="no-api">⚠️ Requires Chrome or Edge. Firefox doesn't support the File System Access API.</div>
     <div id="search-wrap">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -464,11 +504,15 @@ body {
       <button id="btn-source" onclick="setMode('source')">Source</button>
       <button id="btn-edit"   onclick="setMode('edit')"  >Edit</button>
     </div>
+    <button id="dir-btn" onclick="toggleDir()" title="Switch text direction (LTR / RTL) — useful for Arabic">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10M7 7l3-3M7 7l3 3M17 17H7M17 17l-3-3M17 17l-3 3"/></svg>
+      <span id="dir-label">LTR</span>
+    </button>
     <button id="save-btn" onclick="saveFile()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
       Save
     </button>
-    <span id="kbd-hint">Ctrl+S save · Ctrl+E toggle edit</span>
+    <span id="kbd-hint">Ctrl+S save · Ctrl+E toggle edit · Ctrl+L direction</span>
   </div>
 
   <div id="content-area">
@@ -498,6 +542,7 @@ body {
   <div id="statusbar">
     <span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> <span id="sb-file">No file</span></span>
     <span id="sb-mode-wrap">Mode: <span id="sb-mode">—</span></span>
+    <span id="sb-dir-wrap">Dir: <span id="sb-dir">—</span></span>
     <span id="sb-chars">—</span>
     <span id="sb-lines">—</span>
   </div>
@@ -511,6 +556,10 @@ let currentName = null;
 let content     = '';
 let mode        = 'view';
 let dirty       = false;
+let textDir     = 'ltr';     // 'ltr' | 'rtl' — current file's text direction
+const DIR_PREFS_KEY = 'md-viewer-dir-prefs';
+let dirPrefs = {};
+try { dirPrefs = JSON.parse(localStorage.getItem(DIR_PREFS_KEY) || '{}'); } catch(e) { dirPrefs = {}; }
 
 // ── Check API support ────────────────────────────────────────────────
 if (!window.showDirectoryPicker) {
@@ -565,6 +614,34 @@ function renderList(names) {
 
 function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+// ── Text direction (LTR / RTL) ──────────────────────────────────────────
+// Auto-detects Arabic/Hebrew script so files open in the right direction
+// by default; the toolbar button lets you override per file.
+function detectDir(text) {
+  const rtlChars = text.match(/[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/g) || [];
+  const letters  = text.match(/[^\s\d\p{P}]/gu) || [];
+  if (!letters.length) return 'ltr';
+  return (rtlChars.length / letters.length) > 0.15 ? 'rtl' : 'ltr';
+}
+
+function applyDir(d) {
+  textDir = d;
+  document.getElementById('md-out').setAttribute('dir', d);
+  document.getElementById('source-content').setAttribute('dir', d);
+  document.getElementById('edit-ta').setAttribute('dir', d);
+  document.getElementById('dir-label').textContent = d.toUpperCase();
+  document.getElementById('dir-btn').classList.toggle('rtl-active', d === 'rtl');
+  document.getElementById('sb-dir').textContent = d.toUpperCase();
+}
+
+function toggleDir() {
+  applyDir(textDir === 'rtl' ? 'ltr' : 'rtl');
+  if (currentName) {
+    dirPrefs[currentName] = textDir;
+    localStorage.setItem(DIR_PREFS_KEY, JSON.stringify(dirPrefs));
+  }
+}
+
 // ── Search ───────────────────────────────────────────────────────────
 document.getElementById('search').addEventListener('input', function() {
   const q = this.value.toLowerCase();
@@ -586,6 +663,7 @@ async function pick(name) {
   try {
     const file = await handles[name].getFile();
     content = await file.text();
+    applyDir(dirPrefs[name] || detectDir(content));
     showFile();
   } catch(e) {
     alert('Could not read file:\n' + e.message);
@@ -702,6 +780,10 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
     e.preventDefault();
     if (currentName) setMode('view');
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+    e.preventDefault();
+    if (currentName) toggleDir();
   }
 });
 
